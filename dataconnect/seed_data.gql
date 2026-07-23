@@ -1,0 +1,30 @@
+mutation CreateSeedData @transaction {
+  user_insertMany(data: [
+    {displayName: "Alice", email: "alice@example.com", status: "active", id: "00000000-0000-0000-0000-000000000001"},
+    {displayName: "Bob", email: "bob@example.com", status: "active", id: "00000000-0000-0000-0000-000000000002"},
+    {displayName: "Charlie", email: "charlie@example.com", status: "offline", id: "00000000-0000-0000-0000-000000000003"}
+  ])
+  relationship_insertMany(data: [
+    {userA: {id: "00000000-0000-0000-0000-000000000001"}, userB: {id: "00000000-0000-0000-0000-000000000002"}, createdAt: "2023-01-01T00:00:00Z", id: "10000000-0000-0000-0000-000000000001"},
+    {userA: {id: "00000000-0000-0000-0000-000000000002"}, userB: {id: "00000000-0000-0000-0000-000000000003"}, createdAt: "2023-02-01T00:00:00Z", id: "10000000-0000-0000-0000-000000000002"}
+  ])
+  playlist_insertMany(data: [
+    {relationship: {id: "10000000-0000-0000-0000-000000000001"}, name: "Road Trip", id: "20000000-0000-0000-0000-000000000001"},
+    {relationship: {id: "10000000-0000-0000-0000-000000000001"}, name: "Chill Vibes", id: "20000000-0000-0000-0000-000000000002"},
+    {relationship: {id: "10000000-0000-0000-0000-000000000002"}, name: "Workout", id: "20000000-0000-0000-0000-000000000003"}
+  ])
+  track_insertMany(data: [
+    {playlist: {id: "20000000-0000-0000-0000-000000000001"}, songTitle: "Song 1", artist: "Artist A", trackUri: "uri:1", id: "30000000-0000-0000-0000-000000000001"},
+    {playlist: {id: "20000000-0000-0000-0000-000000000001"}, songTitle: "Song 2", artist: "Artist B", trackUri: "uri:2", id: "30000000-0000-0000-0000-000000000002"},
+    {playlist: {id: "20000000-0000-0000-0000-000000000002"}, songTitle: "Song 3", artist: "Artist C", trackUri: "uri:3", id: "30000000-0000-0000-0000-000000000003"}
+  ])
+  syncSession_insertMany(data: [
+    {relationship: {id: "10000000-0000-0000-0000-000000000001"}, startTime: "2023-05-01T10:00:00Z", status: "finished", id: "40000000-0000-0000-0000-000000000001"},
+    {relationship: {id: "10000000-0000-0000-0000-000000000002"}, startTime: "2023-05-02T12:00:00Z", status: "active", id: "40000000-0000-0000-0000-000000000002"}
+  ])
+  message_insertMany(data: [
+    {sender: {id: "00000000-0000-0000-0000-000000000001"}, session: {id: "40000000-0000-0000-0000-000000000001"}, content: "Hello!", type: "text", id: "50000000-0000-0000-0000-000000000001"},
+    {sender: {id: "00000000-0000-0000-0000-000000000002"}, session: {id: "40000000-0000-0000-0000-000000000001"}, content: "Hi there!", type: "text", id: "50000000-0000-0000-0000-000000000002"},
+    {sender: {id: "00000000-0000-0000-0000-000000000001"}, session: {id: "40000000-0000-0000-0000-000000000002"}, content: "Syncing now", type: "system", id: "50000000-0000-0000-0000-000000000003"}
+  ])
+}

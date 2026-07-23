@@ -1,0 +1,59 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Users: each user can only read/write their own profile
+    match /users/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // Rooms: authenticated users can create, participants can read/write their room
+    match /rooms/{roomCode} {
+      allow read: if request.auth != null && (
+        request.auth.uid == resource.data.user1.uid ||
+        request.auth.uid == resource.data.user2.uid
+      );
+      allow create: if request.auth != null;
+      allow update, delete: if request.auth != null && (
+        request.auth.uid == resource.data.user1.uid ||
+        request.auth.uid == resource.data.user2.uid
+      );
+    }
+
+    // Messages: only room participants can read/write
+    match /messages/{messageId} {
+      allow read: if request.auth != null && (
+        request.auth.uid == get(/databases/$(database)/documents/rooms/$(resource.data.roomCode)).data.user1.uid ||
+        request.auth.uid == get(/databases/$(database)/documents/rooms/$(resource.data.roomCode)).data.user2.uid
+      );
+      allow create: if request.auth != null;
+      allow update, delete: if request.auth.uid == resource.data.senderId;
+    }
+
+    // Photos: room participants can read/write
+    match /photos/{photoId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null;
+      allow delete: if request.auth.uid == resource.data.uploadedBy;
+    }
+
+    // Notes, Todos, Wishlist, Bucketlist: room participants
+    match /notes/{noteId} {
+      allow read, write: if request.auth != null;
+    }
+    match /todos/{todoId} {
+      allow read, write: if request.auth != null;
+    }
+    match /wishlist/{itemId} {
+      allow read, write: if request.auth != null;
+    }
+    match /bucketlist/{itemId} {
+      allow read, write: if request.auth != null;
+    }
+
+    // Relationships
+    match /relationships/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+  }
+}

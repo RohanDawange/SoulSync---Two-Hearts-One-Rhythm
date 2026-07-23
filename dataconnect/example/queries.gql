@@ -1,0 +1,133 @@
+mutation CreateUser($displayName: String!, $email: String!, $status: String!) @auth(level: USER) {
+  user_insert(data: {id_expr: "auth.uid", displayName: $displayName, email: $email, status: $status})
+}
+
+mutation UpdateUser($displayName: String, $status: String) @auth(level: USER) {
+  user_update(key: {id_expr: "auth.uid"}, data: {displayName: $displayName, status: $status})
+}
+
+mutation DeleteUser @auth(level: USER) {
+  user_delete(key: {id_expr: "auth.uid"})
+}
+
+query GetUser @auth(level: USER) {
+  user(key: {id_expr: "auth.uid"}) {
+    displayName email status avatarUrl lastActive
+  }
+}
+
+query ListUsers @auth(level: PUBLIC, insecureReason: "Listing users for discovery.") {
+  users {
+    id displayName status
+  }
+}
+
+mutation CreateRelationship($userBId: UUID!, $nickname: String) @auth(level: USER) {
+  relationship_insert(data: {userAId_expr: "auth.uid", userBId: $userBId, nicknameForPartner: $nickname, createdAt_expr: "request.time"})
+}
+
+mutation UpdateRelationship($id: UUID!, $nickname: String) @auth(level: USER) {
+  relationship_update(key: {id: $id}, data: {nicknameForPartner: $nickname})
+}
+
+mutation DeleteRelationship($id: UUID!) @auth(level: USER) {
+  relationship_delete(key: {id: $id})
+}
+
+query GetRelationship($id: UUID!) @auth(level: USER) {
+  relationship(id: $id) {
+    userA { id } userB { id } nicknameForPartner
+  }
+}
+
+query ListMyRelationships @auth(level: USER) {
+  relationships(where: {_or: [{userAId: {eq_expr: "auth.uid"}}, {userBId: {eq_expr: "auth.uid"}}]}) {
+    id nicknameForPartner
+  }
+}
+
+mutation CreateSyncSession($relationshipId: UUID!, $status: String!) @auth(level: USER) {
+  syncSession_insert(data: {relationshipId: $relationshipId, status: $status, startTime_expr: "request.time"})
+}
+
+mutation UpdateSyncSession($id: UUID!, $status: String, $endTime: Timestamp) @auth(level: USER) {
+  syncSession_update(key: {id: $id}, data: {status: $status, endTime: $endTime})
+}
+
+mutation DeleteSyncSession($id: UUID!) @auth(level: USER) {
+  syncSession_delete(key: {id: $id})
+}
+
+query GetSyncSession($id: UUID!) @auth(level: USER) {
+  syncSession(id: $id) {
+    status startTime endTime totalDuration
+  }
+}
+
+query ListSyncSessions($relationshipId: UUID!) @auth(level: USER) {
+  syncSessions(where: {relationshipId: {eq: $relationshipId}}) {
+    id status startTime
+  }
+}
+
+mutation CreatePlaylist($relationshipId: UUID!, $name: String!) @auth(level: USER) {
+  playlist_insert(data: {relationshipId: $relationshipId, name: $name})
+}
+
+mutation UpdatePlaylist($id: UUID!, $name: String, $description: String) @auth(level: USER) {
+  playlist_update(key: {id: $id}, data: {name: $name, description: $description})
+}
+
+mutation DeletePlaylist($id: UUID!) @auth(level: USER) {
+  playlist_delete(key: {id: $id})
+}
+
+query GetPlaylist($id: UUID!) @auth(level: USER) {
+  playlist(id: $id) {
+    name description coverImageUrl
+  }
+}
+
+query ListPlaylists($relationshipId: UUID!) @auth(level: USER) {
+  playlists(where: {relationshipId: {eq: $relationshipId}}) {
+    id name
+  }
+}
+
+mutation CreateTrack($playlistId: UUID!, $title: String!, $artist: String!, $uri: String!) @auth(level: USER) {
+  track_insert(data: {playlistId: $playlistId, songTitle: $title, artist: $artist, trackUri: $uri, addedByUserId_expr: "auth.uid"})
+}
+
+mutation UpdateTrack($id: UUID!, $title: String) @auth(level: USER) {
+  track_update(key: {id: $id}, data: {songTitle: $title})
+}
+
+mutation DeleteTrack($id: UUID!) @auth(level: USER) {
+  track_delete(key: {id: $id})
+}
+
+query GetTrack($id: UUID!) @auth(level: USER) {
+  track(id: $id) {
+    songTitle artist trackUri
+  }
+}
+
+query ListTracks($playlistId: UUID!) @auth(level: USER) {
+  tracks(where: {playlistId: {eq: $playlistId}}) {
+    id songTitle artist
+  }
+}
+
+mutation SendMessage($sessionId: UUID!, $content: String!, $type: String!) @auth(level: USER) {
+  message_insert(data: {sessionId: $sessionId, senderId_expr: "auth.uid", content: $content, type: $type, timestamp_expr: "request.time"})
+}
+
+mutation DeleteMessage($id: UUID!) @auth(level: USER) {
+  message_delete(key: {id: $id})
+}
+
+query GetMessages($sessionId: UUID!) @auth(level: USER) {
+  messages(where: {sessionId: {eq: $sessionId}}, orderBy: [{timestamp: DESC}]) {
+    content type sender { displayName }
+  }
+}

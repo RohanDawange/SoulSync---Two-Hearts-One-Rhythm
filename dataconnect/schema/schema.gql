@@ -1,0 +1,45 @@
+type User @table {
+  displayName: String!
+  email: String!
+  status: String!
+  avatarUrl: String
+  lastActive: Timestamp
+}
+
+type Relationship @table {
+  userA: User!
+  userB: User!
+  createdAt: Timestamp!
+  nicknameForPartner: String
+}
+
+type SyncSession @table {
+  relationship: Relationship!
+  startTime: Timestamp!
+  status: String!
+  endTime: Timestamp
+  totalDuration: Int
+}
+
+type Playlist @table {
+  relationship: Relationship!
+  name: String!
+  description: String
+  coverImageUrl: String
+}
+
+type Track @table {
+  playlist: Playlist!
+  songTitle: String!
+  artist: String!
+  trackUri: String!
+  addedByUser: User
+}
+
+type Message @table {
+  sender: User!
+  session: SyncSession!
+  content: String!
+  type: String!
+  timestamp: Timestamp
+}
