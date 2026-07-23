@@ -1,7 +1,8 @@
 import React, { createContext, useContext, useEffect, useReducer, ReactNode } from 'react';
 import { User, AuthState } from '@/types/auth';
 import * as firebaseAuth from '@/firebase/auth';
-import { connectSocket, disconnectSocket } from '@/socket';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { db } from '@/firebase/config';
 import toast from 'react-hot-toast';
 
 interface AuthContextType extends AuthState {
@@ -42,21 +43,17 @@ function authReducer(state: AuthState, action: AuthAction): AuthState {
   }
 }
 
-const mapFirebaseUser = async (firebaseUser: any): Promise<User | null> => {
-  if (!firebaseUser) return null;
-  const token = await firebaseUser.getIdToken();
-  try {
-    const res = await fetch(`${import.meta.env.VITE_SERVER_URL || ''}/api/auth/verify`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ idToken: token }),
-    });
-    if (res.ok) {
-      return await res.json();
-    }
-  } catch {}
-  return {
-    uid: firebaseUser.uid,
+const createOrGetUser = async (firebaseUser: any): Promise<User> => {
+  const uid = firebaseUser.uid;
+  const userRef = doc(db, 'users', uid);
+  const snap = await getDoc(userRef);
+
+  if (snap.exists()) {
+    return snap.data() as User;
+  }
+
+  const newUser: User = {
+    uid,
     email: firebaseUser.email || '',
     displayName: firebaseUser.displayName || 'User',
     photoURL: firebaseUser.photoURL || '',
@@ -69,6 +66,9 @@ const mapFirebaseUser = async (firebaseUser: any): Promise<User | null> => {
     online: true,
     currentRoom: null,
   };
+
+  await setDoc(userRef, newUser);
+  return newUser;
 };
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -79,12 +79,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const unsubscribe = firebaseAuth.onAuthChange(async (firebaseUser) => {
       if (firebaseUser) {
-        const token = await firebaseUser.getIdToken();
-        connectSocket(token);
-        const user = await mapFirebaseUser(firebaseUser);
-        dispatch({ type: 'SET_USER', payload: user as User });
+        const user = await createOrGetUser(firebaseUser);
+        dispatch({ type: 'SET_USER', payload: user });
       } else {
-        disconnectSocket();
         dispatch({ type: 'LOGOUT' });
       }
     });
@@ -123,6 +120,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = async () => {
     try {
+      if (state.user) {
+        await setDoc(doc(db, 'users', state.user.uid), { online: false, lastActive: new Date() }, { merge: true });
+      }
       await firebaseAuth.logout();
       toast.success('Goodbye! 💜');
     } catch (err: any) {
@@ -132,6 +132,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const updateProfile = (data: Partial<User>) => {
     dispatch({ type: 'UPDATE_USER', payload: data });
+    if (state.user) {
+      setDoc(doc(db, 'users', state.user.uid), data, { merge: true });
+    }
   };
 
   return (

@@ -1,18 +1,16 @@
 import React, { createContext, useContext, useEffect, useReducer, useCallback, useRef, ReactNode } from 'react';
 import { Message } from '@/types/message';
-import { SOCKET_EVENTS } from '@/utils/constants';
-import { useSocket } from './SocketContext';
 import { useRoom } from './RoomContext';
-import { getSocket } from '@/socket';
+import { useAuth } from './AuthContext';
+import * as chatService from '@/services/chatService';
 
 interface ChatContextType {
   messages: Message[];
   unreadCount: number;
   isTyping: boolean;
   typingUser: string | null;
-  sendMessage: (content: string, type?: Message['type']) => void;
-  setTyping: (typing: boolean) => void;
-  resetUnreadCount: () => void;
+  sendMessage: (content: string, type?: 'text' | 'image' | 'gif') => Promise<void>;
+  setTyping: (isTyping: boolean) => void;
 }
 
 interface ChatState {
@@ -23,98 +21,68 @@ interface ChatState {
 }
 
 type ChatAction =
+  | { type: 'SET_MESSAGES'; payload: Message[] }
   | { type: 'ADD_MESSAGE'; payload: Message }
-  | { type: 'SET_TYPING'; payload: { isTyping: boolean; userName: string | null } }
+  | { type: 'SET_TYPING'; payload: { isTyping: boolean; user: string | null } }
   | { type: 'RESET_UNREAD' }
   | { type: 'CLEAR_CHAT' };
-
-const initialState: ChatState = {
-  messages: [],
-  unreadCount: 0,
-  isTyping: false,
-  typingUser: null,
-};
-
-function chatReducer(state: ChatState, action: ChatAction): ChatState {
-  switch (action.type) {
-    case 'ADD_MESSAGE':
-      return {
-        ...state,
-        messages: [...state.messages, action.payload],
-        unreadCount: state.unreadCount + 1,
-      };
-    case 'SET_TYPING':
-      return {
-        ...state,
-        isTyping: action.payload.isTyping,
-        typingUser: action.payload.userName,
-      };
-    case 'RESET_UNREAD':
-      return { ...state, unreadCount: 0 };
-    case 'CLEAR_CHAT':
-      return initialState;
-    default:
-      return state;
-  }
-}
 
 const ChatContext = createContext<ChatContextType | undefined>(undefined);
 
 export function ChatProvider({ children }: { children: ReactNode }) {
-  const [state, dispatch] = useReducer(chatReducer, initialState);
-  const { socket } = useSocket();
+  const [state, dispatch] = useReducer((s: ChatState, a: ChatAction): ChatState => {
+    switch (a.type) {
+      case 'SET_MESSAGES':
+        return { ...s, messages: a.payload };
+      case 'ADD_MESSAGE':
+        return { ...s, messages: [...s.messages, a.payload], unreadCount: s.unreadCount + 1 };
+      case 'SET_TYPING':
+        return { ...s, isTyping: a.payload.isTyping, typingUser: a.payload.user };
+      case 'RESET_UNREAD':
+        return { ...s, unreadCount: 0 };
+      case 'CLEAR_CHAT':
+        return { messages: [], unreadCount: 0, isTyping: false, typingUser: null };
+      default:
+        return s;
+    }
+  }, { messages: [], unreadCount: 0, isTyping: false, typingUser: null });
+
   const { currentRoom } = useRoom();
-  const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const { user } = useAuth();
+  const typingTimer = useRef<ReturnType<typeof setTimeout>>();
 
   useEffect(() => {
-    if (!socket) return;
+    if (!currentRoom) {
+      dispatch({ type: 'CLEAR_CHAT' });
+      return;
+    }
+    const unsub = chatService.listenMessages(currentRoom.code, (msgs) => {
+      dispatch({ type: 'SET_MESSAGES', payload: msgs });
+    });
+    return unsub;
+  }, [currentRoom?.code]);
 
-    const handleMessage = (message: Message) => {
-      dispatch({ type: 'ADD_MESSAGE', payload: message });
-    };
+  const sendMessage = useCallback(async (content: string, type: 'text' | 'image' | 'gif' = 'text') => {
+    if (!currentRoom || !user || !content.trim()) return;
+    await chatService.sendMessage(currentRoom.code, {
+      senderId: user.uid,
+      senderName: user.displayName,
+      senderAvatar: user.photoURL,
+      content: content.trim(),
+      type,
+    });
+  }, [currentRoom, user]);
 
-    const handleTyping = (data: { userId: string; userName: string; isTyping: boolean }) => {
-      dispatch({ type: 'SET_TYPING', payload: { isTyping: data.isTyping, userName: data.userName } });
-    };
-
-    socket.on(SOCKET_EVENTS.CHAT_MESSAGE, handleMessage);
-    socket.on(SOCKET_EVENTS.CHAT_TYPING, handleTyping);
-
-    return () => {
-      socket.off(SOCKET_EVENTS.CHAT_MESSAGE, handleMessage);
-      socket.off(SOCKET_EVENTS.CHAT_TYPING, handleTyping);
-    };
-  }, [socket]);
-
-  const sendMessage = useCallback((content: string, type: Message['type'] = 'text') => {
-    const s = socket || getSocket();
-    if (!s || !currentRoom) return;
-    s.emit(SOCKET_EVENTS.CHAT_SEND, { roomCode: currentRoom.code, content, type });
-  }, [socket, currentRoom]);
-
-  const setTyping = useCallback((typing: boolean) => {
-    const s = socket || getSocket();
-    if (!s || !currentRoom) return;
-
-    s.emit(SOCKET_EVENTS.CHAT_TYPING, { roomCode: currentRoom.code, isTyping: typing });
-
-    if (typing) {
-      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
-      typingTimeoutRef.current = setTimeout(() => {
-        s.emit(SOCKET_EVENTS.CHAT_TYPING, { roomCode: currentRoom.code, isTyping: false });
+  const setTyping = useCallback((isTyping: boolean) => {
+    if (!currentRoom || !user) return;
+    if (typingTimer.current) clearTimeout(typingTimer.current);
+    if (isTyping) {
+      dispatch({ type: 'SET_TYPING', payload: { isTyping: true, user: 'Partner' } });
+      typingTimer.current = setTimeout(() => {
+        dispatch({ type: 'SET_TYPING', payload: { isTyping: false, user: null } });
       }, 2000);
     }
-  }, [socket, currentRoom]);
-
-  const resetUnreadCount = useCallback(() => {
-    dispatch({ type: 'RESET_UNREAD' });
-  }, []);
-
-  useEffect(() => {
-    return () => {
-      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
-    };
-  }, []);
+  }, [currentRoom, user]);
 
   return (
     <ChatContext.Provider
@@ -125,7 +93,6 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         typingUser: state.typingUser,
         sendMessage,
         setTyping,
-        resetUnreadCount,
       }}
     >
       {children}

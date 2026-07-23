@@ -1,18 +1,17 @@
 import React, { createContext, useContext, useEffect, useReducer, useCallback, ReactNode } from 'react';
 import { Room } from '@/types/room';
-import { SOCKET_EVENTS } from '@/utils/constants';
-import { useSocket } from './SocketContext';
 import { useAuth } from './AuthContext';
-import { getSocket } from '@/socket';
+import * as roomService from '@/services/roomService';
+import * as presenceService from '@/services/presenceService';
 import toast from 'react-hot-toast';
 
 interface RoomContextType {
   currentRoom: Room | null;
   isLoading: boolean;
   error: string | null;
-  createRoom: () => void;
-  joinRoom: (code: string) => void;
-  leaveRoom: () => void;
+  createRoom: () => Promise<void>;
+  joinRoom: (code: string) => Promise<void>;
+  leaveRoom: () => Promise<void>;
   copyInviteLink: () => void;
   copyRoomCode: () => void;
 }
@@ -58,89 +57,66 @@ export function RoomProvider({ children }: { children: ReactNode }) {
     isLoading: false,
     error: null,
   });
-  const { socket } = useSocket();
   const { user } = useAuth();
 
   useEffect(() => {
-    if (!socket) return;
-
-    const handleRoomJoined = (room: Room) => {
-      dispatch({ type: 'SET_ROOM', payload: room });
-      toast.success(`Joined room ${room.code}`);
-    };
-
-    const handleParticipantJoined = (data: { displayName: string }) => {
-      if (data.displayName !== user?.displayName) {
-        toast.success(`${data.displayName} joined the room`);
-      }
-    };
-
-    const handleParticipantLeft = (data: { displayName: string }) => {
-      toast(`${data.displayName} left the room`, { icon: '👋' });
-    };
-
-    const handleRoomError = (data: { message: string }) => {
-      dispatch({ type: 'SET_ERROR', payload: data.message });
-      toast.error(data.message);
-    };
-
-    const handleRoomLeft = () => {
-      dispatch({ type: 'CLEAR_ROOM' });
-      toast('You left the room', { icon: '👋' });
-    };
-
-    socket.on(SOCKET_EVENTS.ROOM_JOINED, handleRoomJoined);
-    socket.on(SOCKET_EVENTS.ROOM_PARTICIPANT_JOINED, handleParticipantJoined);
-    socket.on(SOCKET_EVENTS.ROOM_PARTICIPANT_LEFT, handleParticipantLeft);
-    socket.on(SOCKET_EVENTS.ROOM_ERROR, handleRoomError);
-    socket.on(SOCKET_EVENTS.ROOM_LEFT, handleRoomLeft);
-
-    return () => {
-      socket.off(SOCKET_EVENTS.ROOM_JOINED, handleRoomJoined);
-      socket.off(SOCKET_EVENTS.ROOM_PARTICIPANT_JOINED, handleParticipantJoined);
-      socket.off(SOCKET_EVENTS.ROOM_PARTICIPANT_LEFT, handleParticipantLeft);
-      socket.off(SOCKET_EVENTS.ROOM_ERROR, handleRoomError);
-      socket.off(SOCKET_EVENTS.ROOM_LEFT, handleRoomLeft);
-    };
-  }, [socket, user?.displayName]);
-
-  const createRoom = useCallback(() => {
-    const s = socket || getSocket();
-    if (!s) {
-      toast.error('Not connected');
-      return;
-    }
-    dispatch({ type: 'SET_LOADING', payload: true });
-    s.emit(SOCKET_EVENTS.ROOM_CREATE, (response: { room: Room; error?: string }) => {
-      if (response.error) {
-        dispatch({ type: 'SET_ERROR', payload: response.error });
-        toast.error(response.error);
+    if (!user?.currentRoom) return;
+    const unsub = roomService.listenRoom(user.currentRoom, (room) => {
+      if (room) {
+        dispatch({ type: 'SET_ROOM', payload: room });
       } else {
-        dispatch({ type: 'SET_ROOM', payload: response.room });
-        toast.success('Room created!');
+        dispatch({ type: 'CLEAR_ROOM' });
       }
     });
-  }, [socket]);
+    return unsub;
+  }, [user?.currentRoom]);
 
-  const joinRoom = useCallback((code: string) => {
-    const s = socket || getSocket();
-    if (!s) {
-      toast.error('Not connected');
-      return;
-    }
+  useEffect(() => {
+    if (!user) return;
+    presenceService.setUserOnline(user.uid, true);
+    return presenceService.setupPresenceCleanup(user.uid);
+  }, [user]);
+
+  const createRoom = useCallback(async () => {
+    if (!user) return;
     dispatch({ type: 'SET_LOADING', payload: true });
-    s.emit(SOCKET_EVENTS.ROOM_JOIN, { roomCode: code });
-  }, [socket]);
+    try {
+      const room = await roomService.createRoom(user);
+      dispatch({ type: 'SET_ROOM', payload: room });
+      toast.success('Room created!');
+    } catch (err: any) {
+      dispatch({ type: 'SET_ERROR', payload: err.message });
+      toast.error(err.message);
+    }
+  }, [user]);
 
-  const leaveRoom = useCallback(() => {
-    const s = socket || getSocket();
-    if (!s || !state.currentRoom) return;
-    s.emit(SOCKET_EVENTS.ROOM_LEAVE, { roomCode: state.currentRoom.code });
-  }, [socket, state.currentRoom]);
+  const joinRoom = useCallback(async (code: string) => {
+    if (!user) return;
+    dispatch({ type: 'SET_LOADING', payload: true });
+    try {
+      const room = await roomService.joinRoom(code.toUpperCase(), user);
+      dispatch({ type: 'SET_ROOM', payload: room });
+      toast.success(`Joined room ${room.code}`);
+    } catch (err: any) {
+      dispatch({ type: 'SET_ERROR', payload: err.message });
+      toast.error(err.message);
+    }
+  }, [user]);
+
+  const leaveRoom = useCallback(async () => {
+    if (!user || !state.currentRoom) return;
+    try {
+      await roomService.leaveRoom(state.currentRoom.code, user.uid);
+      dispatch({ type: 'CLEAR_ROOM' });
+      toast('You left the room', { icon: '👋' });
+    } catch (err: any) {
+      toast.error(err.message);
+    }
+  }, [user, state.currentRoom]);
 
   const copyInviteLink = useCallback(() => {
     if (!state.currentRoom) return;
-    const link = `${window.location.origin}/room/${state.currentRoom.code}`;
+    const link = `${window.location.origin}/#/room/${state.currentRoom.code}`;
     navigator.clipboard.writeText(link).then(() => {
       toast.success('Invite link copied!');
     }).catch(() => {

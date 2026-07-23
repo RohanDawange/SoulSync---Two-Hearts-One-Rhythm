@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useSocket } from '@/context/SocketContext';
+import { useSocket } from '@/hooks/useSocket';
 import { useRoom } from '@/context/RoomContext';
 import { SOCKET_EVENTS } from '@/utils/constants';
 
@@ -57,3 +57,4 @@ export default function ReactionOverlay() {
     </div>
   );
 }
+

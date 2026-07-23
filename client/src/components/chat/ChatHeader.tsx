@@ -6,7 +6,7 @@ import Badge from '@/components/ui/Badge';
 import { useRoom } from '@/context/RoomContext';
 import { useAuth } from '@/context/AuthContext';
 import { usePlayer } from '@/context/PlayerContext';
-import { useSocket } from '@/context/SocketContext';
+import { useSocket } from '@/hooks/useSocket';
 
 interface ChatHeaderProps {
   onBack?: () => void;
@@ -90,3 +90,4 @@ export default function ChatHeader({ onBack, onVoiceCall, onVideoCall }: ChatHea
     </div>
   );
 }
+
